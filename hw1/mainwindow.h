@@ -64,6 +64,8 @@ public:
     ~MainWindow();
 protected:	//mouse
     void mousePressEvent(QMouseEvent *event);
+    void handleLeftMouseClick(const Point& p);
+    void handleRightMouseClick();
     vector<list<Point>> SourcePoints;
     int OutSource = -1;
     vector<list<Point>> WindowPoints;
@@ -98,15 +100,21 @@ protected:	//mouse
     void paintEvent(QPaintEvent *event);
 
     void JudgeSpecial();
+    void AddPolygonToResult(const list<Point>& polygon);
 
     bool HasNoIntersection(bool mode, int num);
 
     bool JudgeAdd(bool mode, int num);
+    bool ShouldNotAdd(const list<Point>& polygonA, const list<Point>& polygonB, bool isInside);
 
+    void ClearDataStructures();
+
+    void InitializeVisitFlags();
 private slots:
     void SwitchToSource();
     void SwitchToWindow();
     void WeilerAtherton();
+    void ResetAll();
 private:
     Ui::MainWindow *ui;
 };

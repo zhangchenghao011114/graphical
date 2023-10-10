@@ -9,14 +9,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
-    mode = SOURCE;
-    SourcePoints.clear();
-    WindowPoints.clear();
-    BufferPoints.clear();
-
-    ui->setupUi(this);
-    ui->SourceButton->setStyleSheet("background-color: green; color: white;");
-    ui->WindowButton->setStyleSheet("background-color: grey; color: black;");
+    ResetAll();
     connect(ui->SourceButton, &QPushButton::clicked, this, &MainWindow::SwitchToSource);
     connect(ui->WindowButton, &QPushButton::clicked, this, &MainWindow::SwitchToWindow);
     connect(ui->SaveButton, &QPushButton::clicked, this, &MainWindow::WeilerAtherton);
@@ -29,46 +22,55 @@ MainWindow::~MainWindow()
 
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
-    QPoint p_re = event->pos();
-    int x = p_re.x();
-    int y = p_re.y();
+    QPoint point = event->pos();
+    int x = point.x();
+    int y = point.y();
     Point p(x, y);
+
     if (event->button() == Qt::LeftButton)
     {
-        BufferPoints.push_back(p);
-        update();
+        handleLeftMouseClick(p);
     }
     else if (event->button() == Qt::RightButton)
     {
-        if (BufferPoints.size() >= 3)
-        {
-            CloseLink();
-            update();
-        }
+        handleRightMouseClick();
     }
-
 }
 
-bool MainWindow::IsClockWise(list<Point> PointLink)
+void MainWindow::handleLeftMouseClick(const Point& p)
+{
+    BufferPoints.push_back(p);
+    update();
+}
+
+void MainWindow::handleRightMouseClick()
+{
+    if (BufferPoints.size() >= 3)
+    {
+        CloseLink();
+        update();
+    }
+}
+
+bool MainWindow::IsClockWise(list<Point> pointLink)
 {
     int sum = 0;
-    auto current = PointLink.begin();
+    auto current = pointLink.begin();
     auto previous = current;
     current++;
-    while (current != PointLink.end())
+    while (current != pointLink.end())
     {
         sum += (current->x - previous->x) * (current->y + previous->y);
         current++;
         previous++;
     }
-    current = PointLink.begin();
-    sum += (current->x - previous->x) * (current->y + previous->y);
+    sum += (pointLink.begin()->x - previous->x) * (pointLink.begin()->y + previous->y);
     return sum < 0;
 }
 
 bool MainWindow::JudgeInside(Point p, list<Point> Polygon)
 {
-    double sum = 0;
+    double angleSum = 0;
     auto current = Polygon.begin();
     auto previous = current;
     current++;
@@ -80,152 +82,139 @@ bool MainWindow::JudgeInside(Point p, list<Point> Polygon)
         double b = p.GetDist(r);
         double c = q.GetDist(r);
         double angle = acos((a * a + b * b - c * c) / (2 * a * b));
-        sum += angle;
+        angleSum += angle;
         current++;
         previous++;
     }
 
-    double last_angle = 0;
     current = Polygon.begin();
-    {
-        Point q(current->x, current->y);
-        Point r(previous->x, previous->y);
-        double a = p.GetDist(q);
-        double b = p.GetDist(r);
-        double c = q.GetDist(r);
-        double angle = acos((a * a + b * b - c * c) / (2 * a * b));
-        sum += angle;
-    }
-    if (sum - 2 * 3.1415926535 < - 0.01) return 0;
-    return 1;
-}
+    Point q(current->x, current->y);
+    Point r(previous->x, previous->y);
+    double a = p.GetDist(q);
+    double b = p.GetDist(r);
+    double c = q.GetDist(r);
+    double angle = acos((a * a + b * b - c * c) / (2 * a * b));
+    angleSum += angle;
 
+    if (angleSum - 2 * 3.1415926535 < -0.01) {
+        return false;
+    }
+    return true;
+}
 void MainWindow::CloseLink()
 {
+    Point start = BufferPoints.front();
+    int out = -1;
+    vector<list<Point>>* pointsList;
+    int* outIndex;
+
     if (mode == SOURCE)
     {
-        Point start = BufferPoints.front();
-        int out = -1;
-        for (int i = 0; i < SourcePoints.size(); i++)
-        {
-            bool inside = JudgeInside(start, SourcePoints[i]);
-            if (inside)
-            {
-                out = i;
-                break;
-            }
-        }
-        SourcePoints.push_back(BufferPoints);
-        if (out == -1) out = SourcePoints.size() - 1;
-        OutSource = out;
-        for (int i = 0; i < SourcePoints.size(); i++)
-        {
-            if (i == out)
-            {
-                if (IsClockWise(SourcePoints[i]))
-                {
-                    SourcePoints[i].reverse();
-                }
-            }
-            else
-            {
-                if (!IsClockWise(SourcePoints[i]))
-                {
-                    SourcePoints[i].reverse();
-                }
-            }
-        }
-
+        pointsList = &SourcePoints;
+        outIndex = &OutSource;
     }
-
     else
     {
-        Point start = BufferPoints.front();
-        int out = -1;
-        for (int i = 0; i < WindowPoints.size(); i++)
-        {
-            bool inside = JudgeInside(start, WindowPoints[i]);
-            if (inside)
-            {
-                out = i;
-                break;
-            }
-        }
-        WindowPoints.push_back(BufferPoints);
-        if (out == -1) out = WindowPoints.size() - 1;
-        OutWindow = out;
-        for (int i = 0; i < WindowPoints.size(); i++)
-        {
-            if (i == out)
-            {
-                if (IsClockWise(WindowPoints[i]))
-                {
-                    WindowPoints[i].reverse();
-                }
-            }
-            else
-            {
-                if (!IsClockWise(WindowPoints[i]))
-                {
-                    WindowPoints[i].reverse();
-                }
-            }
-        }
-
+        pointsList = &WindowPoints;
+        outIndex = &OutWindow;
     }
+
+    for (int i = 0; i < pointsList->size(); i++)
+    {
+        bool inside = JudgeInside(start, (*pointsList)[i]);
+        if (inside)
+        {
+            out = i;
+            break;
+        }
+    }
+
+    pointsList->push_back(BufferPoints);
+
+    if (out == -1)
+        out = pointsList->size() - 1;
+
+    *outIndex = out;
+
+    for (int i = 0; i < pointsList->size(); i++)
+    {
+        if (i == out)
+        {
+            if (IsClockWise((*pointsList)[i]))
+            {
+                (*pointsList)[i].reverse();
+            }
+        }
+        else
+        {
+            if (!IsClockWise((*pointsList)[i]))
+            {
+                (*pointsList)[i].reverse();
+            }
+        }
+    }
+
     BufferPoints.clear();
 }
 
 void MainWindow::paintEvent(QPaintEvent *event)
 {
-    QPainter paint(this);
-    paint.setPen(Qt::red);
+    QPainter painter(this);
+
+    // 绘制SourcePoints
+    painter.setPen(Qt::red);
     for (int i = 0; i < SourcePoints.size(); i++)
     {
-        auto current = SourcePoints[i].begin();
-        auto previous = current;
-        current++;
-        while (current != SourcePoints[i].end())
+        auto currentPoint = SourcePoints[i].begin();
+        auto previousPoint = currentPoint;
+        currentPoint++;
+        while (currentPoint != SourcePoints[i].end())
         {
-            paint.drawLine(current->x, current->y, previous->x, previous->y);
-            current++;
-            previous++;
+            painter.drawLine(currentPoint->x, currentPoint->y, previousPoint->x, previousPoint->y);
+            currentPoint++;
+            previousPoint++;
         }
-        current = SourcePoints[i].begin();;
-        paint.drawLine(current->x, current->y, previous->x, previous->y);
+        currentPoint = SourcePoints[i].begin();;
+        painter.drawLine(currentPoint->x, currentPoint->y, previousPoint->x, previousPoint->y);
     }
-    paint.setPen(Qt::blue);
+
+    // 绘制WindowPoints
+    painter.setPen(Qt::blue);
     for (int i = 0; i < WindowPoints.size(); i++)
     {
-        auto current = WindowPoints[i].begin();
-        auto previous = current;
-        current++;
-        while (current != WindowPoints[i].end())
+        auto currentPoint = WindowPoints[i].begin();
+        auto previousPoint = currentPoint;
+        currentPoint++;
+        while (currentPoint != WindowPoints[i].end())
         {
-            paint.drawLine(current->x, current->y, previous->x, previous->y);
-            current++;
-            previous++;
+            painter.drawLine(currentPoint->x, currentPoint->y, previousPoint->x, previousPoint->y);
+            currentPoint++;
+            previousPoint++;
         }
-        current = WindowPoints[i].begin();;
-        paint.drawLine(current->x, current->y, previous->x, previous->y);
+        currentPoint = WindowPoints[i].begin();;
+        painter.drawLine(currentPoint->x, currentPoint->y, previousPoint->x, previousPoint->y);
     }
 
-    if(mode == SOURCE) 	paint.setPen(Qt::red);
-    else paint.setPen(Qt::blue);
+    // 绘制BufferPoints
+    if(mode == SOURCE)
+        painter.setPen(Qt::red);
+    else
+        painter.setPen(Qt::blue);
     if (BufferPoints.size() >= 2)
     {
-        auto current = BufferPoints.begin();
-        auto previous = current;
-        current++;
-        while (current != BufferPoints.end())
+        auto currentPoint = BufferPoints.begin();
+        auto previousPoint = currentPoint;
+        currentPoint++;
+        while (currentPoint != BufferPoints.end())
         {
-            paint.drawLine(current->x, current->y, previous->x, previous->y);
-            current++;
-            previous++;
+            painter.drawLine(currentPoint->x, currentPoint->y, previousPoint->x, previousPoint->y);
+            currentPoint++;
+            previousPoint++;
         }
     }
 
-    paint.setPen(Qt::black);
+    // 绘制Result
+    painter.setPen(Qt::black);
     for (int i = 0; i < Result.size(); i++)
     {
         if (Result[i].size() > 2)
@@ -234,12 +223,12 @@ void MainWindow::paintEvent(QPaintEvent *event)
             int previous = 0;
             while (current < Result[i].size())
             {
-                paint.drawLine(Result[i][current].x, Result[i][current].y, Result[i][previous].x, Result[i][previous].y);
+                painter.drawLine(Result[i][current].x, Result[i][current].y, Result[i][previous].x, Result[i][previous].y);
                 current++;
                 previous++;
             }
             current = 0;
-            paint.drawLine(Result[i][current].x, Result[i][current].y, Result[i][previous].x, Result[i][previous].y);
+            painter.drawLine(Result[i][current].x, Result[i][current].y, Result[i][previous].x, Result[i][previous].y);
         }
     }
 }
@@ -251,6 +240,7 @@ void MainWindow::SwitchToSource()
     ui->WindowButton->setStyleSheet("background-color: grey; color: black;");
     BufferPoints.clear();
 }
+
 void MainWindow::SwitchToWindow()
 {
     mode = WINDOW;
@@ -269,71 +259,71 @@ Point MainWindow::GetIntersect(Point pStart, Point pEnd, Point qStart, Point qEn
     int bQ = qStart.x - qEnd.x;
     int cQ = aQ * qStart.x + bQ * qStart.y;
 
-    int det = aP * bQ - aQ * bP;
-    if (det == 0)
+    int determinant = aP * bQ - aQ * bP;
+    if (determinant == 0)
     {
         return Point(-1, -1);
     }
-    int x = (bQ * cP - bP * cQ) / det;
-    int y = (aP * cQ - aQ * cP) / det;
+    int x = (bQ * cP - bP * cQ) / determinant;
+    int y = (aP * cQ - aQ * cP) / determinant;
     if (x > max(pEnd.x, pStart.x) || x < min(pEnd.x, pStart.x) || x > max(qEnd.x, qStart.x) || x < min(qEnd.x, qStart.x))
         return Point(-1, -1);
     if (y > max(pEnd.y, pStart.y) || y < min(pEnd.y, pStart.y) || y > max(qEnd.y, qStart.y) || y < min(qEnd.y, qStart.y))
         return Point(-1, -1);
-    Point theP(x, y);
-    if (det > 0)
-        theP.enter = true;
-    return theP;
+    Point intersectionPoint(x, y);
+    if (determinant > 0)
+        intersectionPoint.enter = true;
+    return intersectionPoint;
 }
 
 double MainWindow::GetK(Point start, Point end, Point middle)
 {
+    double distanceSE = sqrt((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y));
+    double distanceSM = sqrt((middle.x - start.x) * (middle.x - start.x) + (middle.y - start.y) * (middle.y - start.y));
 
-    double t = sqrt((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y));
-    double d = sqrt((middle.x - start.x) * (middle.x - start.x) + (middle.y - start.y) * (middle.y - start.y));
-    return d / t;
+    return distanceSM / distanceSE;
 }
 
 void MainWindow::GetIntersections(Point startA, Point endA, int nPolygon, int nLine, vector<list<Point>>& window,
                                   vector<vector<vector<Intersection>>>& listA, vector<vector<vector<Intersection>>>& listB)
 {
-
     for (int i = 0; i < window.size(); i++)
     {
         list<Point> windowList = window[i];
-        auto current = windowList.begin();
-        auto previous = current;
+        auto currentPoint = windowList.begin();
+        auto previousPoint = currentPoint;
         int currentNum = 0;
-        current++;
-        while (current != windowList.end())
+        currentPoint++;
+        while (currentPoint != windowList.end())
         {
-            Point startB = Point(previous->x, previous->y);
-            Point endB = Point(current->x, current->y);
-            Point intersect = GetIntersect(startA, endA, startB, endB);
-            if (intersect.x >= 0 && intersect.y >= 0)
+            Point startB = Point(previousPoint->x, previousPoint->y);
+            Point endB = Point(currentPoint->x, currentPoint->y);
+            Point intersection = GetIntersect(startA, endA, startB, endB);
+            if (intersection.x >= 0 && intersection.y >= 0)
             {
-                double k = GetK(startA, endA, intersect);
-                double kk = GetK(startB, endB, intersect);
-                Intersection a = Intersection(intersect.x, intersect.y, intersect.enter, k, SOURCE, i, currentNum);
-                Intersection b = Intersection(intersect.x, intersect.y, intersect.enter, kk, WINDOW, nPolygon, nLine);
+                double k = GetK(startA, endA, intersection);
+                double kk = GetK(startB, endB, intersection);
+                Intersection a = Intersection(intersection.x, intersection.y, intersection.enter, k, SOURCE, i, currentNum);
+                Intersection b = Intersection(intersection.x, intersection.y, intersection.enter, kk, WINDOW, nPolygon, nLine);
                 listA[nPolygon][nLine].push_back(a);
                 listB[i][currentNum].push_back(b);
             }
-            current++;
-            previous++;
+            currentPoint++;
+            previousPoint++;
             currentNum++;
         }
-        current = WindowPoints[i].begin();
+
+        currentPoint = windowList.begin();
         {
-            Point startB = Point(previous->x, previous->y);
-            Point endB = Point(current->x, current->y);
-            Point intersect = GetIntersect(startA, endA, startB, endB);
-            if (intersect.x >= 0 && intersect.y >= 0)
+            Point startB = Point(previousPoint->x, previousPoint->y);
+            Point endB = Point(currentPoint->x, currentPoint->y);
+            Point intersection = GetIntersect(startA, endA, startB, endB);
+            if (intersection.x >= 0 && intersection.y >= 0)
             {
-                double k = GetK(startA, endA, intersect);
-                double kk = GetK(startB, endB, intersect);
-                Intersection a = Intersection(intersect.x, intersect.y, intersect.enter, k, SOURCE, i, currentNum);
-                Intersection b = Intersection(intersect.x, intersect.y, intersect.enter, kk, WINDOW, nPolygon, nLine);
+                double k = GetK(startA, endA, intersection);
+                double kk = GetK(startB, endB, intersection);
+                Intersection a = Intersection(intersection.x, intersection.y, intersection.enter, k, SOURCE, i, currentNum);
+                Intersection b = Intersection(intersection.x, intersection.y, intersection.enter, kk, WINDOW, nPolygon, nLine);
                 listA[nPolygon][nLine].push_back(a);
                 listB[i][currentNum].push_back(b);
             }
@@ -358,39 +348,170 @@ void MainWindow::SortIntersections(vector<Intersection>& tList)
     }
 }
 
-void MainWindow::FindRelatedPlace(bool type, Intersection p, int& npolygon, int& nline, int& npoint)
+//void MainWindow::FindRelatedPlace(bool type, Intersection p, int& npolygon, int& nline, int& npoint)
+//{
+//    nline = p.lineNumber;
+//    npolygon = p.polygonNumber;
+//    if (type == SOURCE)
+//    {
+//        for (int i = 0; i < listWindow[npolygon][nline].size(); i++)
+//        {
+//            if (listWindow[npolygon][nline][i].xCoordinate == p.xCoordinate && listWindow[npolygon][nline][i].yCoordinate == p.yCoordinate)
+//            {
+//                npoint = i;
+//                return;
+//            }
+//        }
+//    }
+//    else
+//    {
+//        for (int i = 0; i < listSource[npolygon][nline].size(); i++)
+//        {
+//            if (listSource[npolygon][nline][i].xCoordinate == p.xCoordinate && listSource[npolygon][nline][i].yCoordinate == p.yCoordinate)
+//            {
+//                npoint = i;
+//                return;
+//            }
+//        }
+//    }
+//}
+void MainWindow::FindRelatedPlace(bool type, Intersection targetIntersection, int& targetPolygon, int& targetLine, int& targetPoint)
 {
-    nline = p.lineNumber;
-    npolygon = p.polygonNumber;
-    if (type == SOURCE)
+    targetLine = targetIntersection.lineNumber;
+    targetPolygon = targetIntersection.polygonNumber;
+
+    int numPointsToSearch = (type == SOURCE) ? listWindow[targetPolygon][targetLine].size() : listSource[targetPolygon][targetLine].size();
+
+    for (int i = 0; i < numPointsToSearch; i++)
     {
-        for (int i = 0; i < listWindow[npolygon][nline].size(); i++)
+        Intersection& currentPoint = (type == SOURCE) ? listWindow[targetPolygon][targetLine][i] : listSource[targetPolygon][targetLine][i];
+
+        if (currentPoint.xCoordinate == targetIntersection.xCoordinate && currentPoint.yCoordinate == targetIntersection.yCoordinate)
         {
-            if (listWindow[npolygon][nline][i].xCoordinate == p.xCoordinate && listWindow[npolygon][nline][i].yCoordinate == p.yCoordinate)
-            {
-                npoint = i;
-                return;
-            }
-        }
-    }
-    else
-    {
-        for (int i = 0; i < listSource[npolygon][nline].size(); i++)
-        {
-            if (listSource[npolygon][nline][i].xCoordinate == p.xCoordinate && listSource[npolygon][nline][i].yCoordinate == p.yCoordinate)
-            {
-                npoint = i;
-                return;
-            }
+            targetPoint = i;
+            return;
         }
     }
 }
+
+
+//void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmode,
+//                               int cpolygon, int cline, int cpoint, bool cmode, int current)
+//{
+//    if (cpolygon == -1 || cline == -1 || cpoint == -1)
+//    {
+//        for (int i = 0; i < visit.size(); i++)
+//        {
+//            for (int j = 0; j < visit[i].size(); j++)
+//            {
+//                for (int k = 0; k < visit[i][j].size(); k++)
+//                {
+//                    if (visit[i][j][k] == 0)
+//                    {
+//                        npolygon = i;
+//                        nline = j;
+//                        npoint = k;
+//                        pmode = 1;
+//                        Intersection the_point = listSource[i][j][k];
+//                        if (!the_point.enter)
+//                        {
+//                            pmode = WINDOW;
+//                            FindRelatedPlace(SOURCE, the_point, npolygon, nline, npoint);
+//                            return;
+//                        }
+//                        return;
+//                    }
+//                }
+//            }
+//        }
+//        npolygon = -1;
+//        nline = -1;
+//        npoint = -1;
+//        return;
+//    }
+//    else
+//    {
+//        int length = 0;
+//        list<Point> tlist;
+//        if (cmode == SOURCE)
+//        {
+//            length = listSource[cpolygon][cline].size();
+//            while (cpoint + 1 >= length)
+//            {
+//                cline++;
+//                if (cline >= SourcePoints[cpolygon].size()) cline = 0;
+//                cpoint = -1;
+//                length = listSource[cpolygon][cline].size();
+
+//                auto t_iterator = SourcePoints[cpolygon].begin();
+//                for (int i = 0; i < cline; i++)
+//                {
+//                    t_iterator++;
+//                }
+//                Point the_vertex = *t_iterator;
+//                Result[current].push_back(the_vertex);
+//            }
+//            cpoint++;
+//            Intersection the_point = listSource[cpolygon][cline][cpoint];
+//            if (!the_point.enter)
+//            {
+//                pmode = WINDOW;
+//                FindRelatedPlace(SOURCE, the_point, npolygon, nline, npoint);
+//                return;
+//            }
+//            else
+//            {
+//                pmode = SOURCE;
+//                npolygon = cpolygon;
+//                nline = cline;
+//                npoint = cpoint;
+//                return;
+//            }
+//        }
+//        else
+//        {
+//            length = listWindow[cpolygon][cline].size();
+//            while (cpoint + 1 >= length)
+//            {
+//                cline++;
+//                if (cline >= WindowPoints[cpolygon].size()) cline = 0;
+//                cpoint = -1;
+//                length = listWindow[cpolygon][cline].size();
+
+//                auto t_iterator = WindowPoints[cpolygon].begin();
+//                for (int i = 0; i < cline; i++)
+//                {
+//                    t_iterator++;
+//                }
+//                Point the_vertex = *t_iterator;
+//                Result[current].push_back(the_vertex);
+//            }
+//            cpoint++;
+//            Intersection the_point = listWindow[cpolygon][cline][cpoint];
+//            if (the_point.enter)
+//            {
+//                pmode = SOURCE;
+//                FindRelatedPlace(WINDOW, the_point, npolygon, nline, npoint);
+//                return;
+//            }
+//            else
+//            {
+//                pmode = WINDOW;
+//                npolygon = cpolygon;
+//                nline = cline;
+//                npoint = cpoint;
+//                return;
+//            }
+//        }
+//    }
+//}
 
 void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmode,
                                int cpolygon, int cline, int cpoint, bool cmode, int current)
 {
     if (cpolygon == -1 || cline == -1 || cpoint == -1)
     {
+        // Find the next unvisited place
         for (int i = 0; i < visit.size(); i++)
         {
             for (int j = 0; j < visit[i].size(); j++)
@@ -404,6 +525,7 @@ void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmo
                         npoint = k;
                         pmode = 1;
                         Intersection the_point = listSource[i][j][k];
+
                         if (!the_point.enter)
                         {
                             pmode = WINDOW;
@@ -415,6 +537,7 @@ void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmo
                 }
             }
         }
+        // If no unvisited place found, set the output parameters to -1
         npolygon = -1;
         nline = -1;
         npoint = -1;
@@ -422,8 +545,10 @@ void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmo
     }
     else
     {
+        // Handle the case when the current position is valid
         int length = 0;
         list<Point> tlist;
+
         if (cmode == SOURCE)
         {
             length = listSource[cpolygon][cline].size();
@@ -494,14 +619,44 @@ void MainWindow::FindNextPlace(int& npolygon, int& nline, int& npoint, bool& pmo
                 return;
             }
         }
+
+    }
+}
+// Helper function to clear data structures
+void MainWindow::ClearDataStructures()
+{
+    listSource.clear();
+    visit.clear();
+    listWindow.clear();
+}
+
+// Helper function to initialize visit flags
+void MainWindow::InitializeVisitFlags()
+{
+    for (int i = 0; i < listSource.size(); i++)
+    {
+        for (int j = 0; j < listSource[i].size(); j++)
+        {
+            SortIntersections(listSource[i][j]);
+            for (int k = 0; k < listSource[i][j].size(); k++)
+            {
+                visit[i][j].push_back(0);
+            }
+        }
+    }
+
+    for (int i = 0; i < listWindow.size(); i++)
+    {
+        for (int j = 0; j < listWindow[i].size(); j++)
+        {
+            SortIntersections(listWindow[i][j]);
+        }
     }
 }
 
 void MainWindow::WeilerAtherton()
 {
-
-    listSource.clear();
-    visit.clear();
+    ClearDataStructures();
     for (int i = 0; i < SourcePoints.size(); i++)
     {
         vector<vector<Intersection>> empty_one;
@@ -520,7 +675,6 @@ void MainWindow::WeilerAtherton()
             visit[i].push_back(new_bool);
         }
     }
-    listWindow.clear();
     for (int i = 0; i < WindowPoints.size(); i++)
     {
         vector<vector<Intersection>> empty_one;
@@ -533,8 +687,6 @@ void MainWindow::WeilerAtherton()
             listWindow[i].push_back(new_empty);
         }
     }
-
-
     for (int ii = 0; ii < SourcePoints.size(); ii++)
     {
         list<Point> source_list = SourcePoints[ii];
@@ -561,120 +713,158 @@ void MainWindow::WeilerAtherton()
             GetIntersections(start, end, ii, current_num, window_lists, listSource, listWindow);
         }
     }
-    for (int i = 0; i < listSource.size(); i++)
-    {
-        for (int j = 0; j < listSource[i].size(); j++)
-        {
-            SortIntersections(listSource[i][j]);
-            for (int k = 0; k < listSource[i][j].size(); k++)
-            {
-                visit[i][j].push_back(0);
-            }
-        }
-    }
-    for (int i = 0; i < listWindow.size(); i++)
-    {
-        for (int j = 0; j < listWindow[i].size(); j++)
-        {
-            SortIntersections(listWindow[i][j]);
-        }
-    }
+
+    InitializeVisitFlags();
 
     Result.clear();
-    vector<Point> empty_kebab;
-    empty_kebab.clear();
-    Result.push_back(empty_kebab);
-    int current = 0;
-    int p_polygon = -1;
-    int p_line = -1;
-    int p_point = -1;
-    bool p_mode = SOURCE;
-    while(1)
+    Result.push_back(vector<Point>()); // Initialize the first contour
+
+    int currentContour = 0;
+    int pPolygon = -1;
+    int pLine = -1;
+    int pPoint = -1;
+    bool pMode = SOURCE;
+
+    while (true)
     {
-        int n_polygon = -1;
-        int n_line = -1;
-        int n_point = -1;
-        bool n_mode = 0;
-        int v_polygon = -1;
-        int v_line = -1;
-        int v_point = -1;
-        FindNextPlace(n_polygon, n_line, n_point, n_mode, p_polygon, p_line, p_point, p_mode, current);
-        if (n_polygon == -1 || n_line == -1 || n_point == -1)
+        int nPolygon = -1;
+        int nLine = -1;
+        int nPoint = -1;
+        bool nMode = false;
+        int vPolygon = -1;
+        int vLine = -1;
+        int vPoint = -1;
+
+        FindNextPlace(nPolygon, nLine, nPoint, nMode, pPolygon, pLine, pPoint, pMode, currentContour);
+
+        if (nPolygon == -1 || nLine == -1 || nPoint == -1)
         {
             break;
         }
-        if (n_mode == WINDOW)
+
+        if (nMode == WINDOW)
         {
-            FindRelatedPlace(WINDOW, listWindow[n_polygon][n_line][n_point], v_polygon, v_line, v_point);
+            FindRelatedPlace(WINDOW, listWindow[nPolygon][nLine][nPoint], vPolygon, vLine, vPoint);
         }
         else
         {
-            v_polygon = n_polygon; v_line = n_line; v_point = n_point;
+            vPolygon = nPolygon;
+            vLine = nLine;
+            vPoint = nPoint;
         }
-        if (visit[v_polygon][v_line][v_point] == 1)
+
+        if (visit[vPolygon][vLine][vPoint] == 1)
         {
-            vector<Point> empty_k;
-            empty_k.clear();
-            Result.push_back(empty_k);
-            current++;
-            p_polygon = -1;
-            p_line = -1;
-            p_point = -1;
-            p_mode = SOURCE;
+            Result.push_back(vector<Point>()); // Start a new contour
+            currentContour++;
+            pPolygon = -1;
+            pLine = -1;
+            pPoint = -1;
+            pMode = SOURCE;
         }
         else
         {
-            Point nova = Point(listSource[v_polygon][v_line][v_point].xCoordinate, listSource[v_polygon][v_line][v_point].yCoordinate);
-            Result[current].push_back(nova);
-            visit[v_polygon][v_line][v_point] = 1;
-            p_polygon = n_polygon;
-            p_line = n_line;
-            p_point = n_point;
-            p_mode = n_mode;
+            Point nova = Point(listSource[vPolygon][vLine][vPoint].xCoordinate, listSource[vPolygon][vLine][vPoint].yCoordinate);
+            Result[currentContour].push_back(nova);
+            visit[vPolygon][vLine][vPoint] = 1;
+            pPolygon = nPolygon;
+            pLine = nLine;
+            pPoint = nPoint;
+            pMode = nMode;
         }
     }
+
     JudgeSpecial();
     repaint();
 }
 
+void MainWindow::ResetAll()
+{
+    mode = SOURCE;
+    SourcePoints.clear();
+    WindowPoints.clear();
+    BufferPoints.clear();
+    ui->setupUi(this);
+    ui->SourceButton->setStyleSheet("background-color: green; color: white;");
+    ui->WindowButton->setStyleSheet("background-color: grey; color: black;");
+}
+
 bool MainWindow::HasNoIntersection(bool mode, int num)
 {
-    if (mode == SOURCE)
+    const auto& polygonList = (mode == SOURCE) ? listSource[num] : listWindow[num];
+
+    for (const auto& lineIntersections : polygonList)
     {
-        for (int i = 0; i < listSource[num].size(); i++)
+        if (!lineIntersections.empty())
         {
-            if (listSource[num][i].size() != 0) return 0;
+            return false; // If any line has intersections, return false
         }
     }
-    else
-    {
-        for (int i = 0; i < listWindow[num].size(); i++)
-        {
-            if (listWindow[num][i].size() != 0) return 0;
-        }
-    }
-    return 1;
+
+    return true; // No intersections found for any line
 }
+
+
+//bool MainWindow::JudgeAdd(bool mode, int num)
+//{
+//    if (mode == SOURCE)
+//    {
+//        for (int i = 0; i < WindowPoints.size(); i++)
+//        {
+//            auto current = SourcePoints[num].begin();
+//            while (current != SourcePoints[num].end())
+//            {
+//                Point c_point = Point(current->x, current->y);
+//                if (i != OutWindow)
+//                {
+//                    if (JudgeInside(c_point, WindowPoints[i])) return 0;
+//                }
+//                else
+//                {
+//                    if (!JudgeInside(c_point, WindowPoints[i])) return 0;
+//                }
+//                current++;
+//            }
+//        }
+//    }
+//    else
+//    {
+//        for (int i = 0; i < SourcePoints.size(); i++)
+//        {
+//            auto current = WindowPoints[num].begin();
+//            while (current != WindowPoints[num].end())
+//            {
+//                Point c_point = Point(current->x, current->y);
+//                if (i != OutSource)
+//                {
+//                    if (JudgeInside(c_point, SourcePoints[i])) return 0;
+//                }
+//                else
+//                {
+
+//                    if (!JudgeInside(c_point, SourcePoints[i])) return 0;
+//                }
+//                current++;
+//            }
+//        }
+//    }
+//    return 1;
+//}
 
 bool MainWindow::JudgeAdd(bool mode, int num)
 {
+    bool shouldAdd = true; // Initialize the flag as true
+
     if (mode == SOURCE)
     {
         for (int i = 0; i < WindowPoints.size(); i++)
         {
-            auto current = SourcePoints[num].begin();
-            while (current != SourcePoints[num].end())
+            const bool isInside = (i != OutWindow);
+
+            if (ShouldNotAdd(SourcePoints[num], WindowPoints[i], isInside))
             {
-                Point c_point = Point(current->x, current->y);
-                if (i != OutWindow)
-                {
-                    if (JudgeInside(c_point, WindowPoints[i])) return 0;
-                }
-                else
-                {
-                    if (!JudgeInside(c_point, WindowPoints[i])) return 0;
-                }
-                current++;
+                shouldAdd = false; // Update the flag if necessary
+                break; // No need to check other windows
             }
         }
     }
@@ -682,65 +872,107 @@ bool MainWindow::JudgeAdd(bool mode, int num)
     {
         for (int i = 0; i < SourcePoints.size(); i++)
         {
-            auto current = WindowPoints[num].begin();
-            while (current != WindowPoints[num].end())
-            {
-                Point c_point = Point(current->x, current->y);
-                if (i != OutSource)
-                {
-                    if (JudgeInside(c_point, SourcePoints[i])) return 0;
-                }
-                else
-                {
+            const bool isInside = (i != OutSource);
 
-                    if (!JudgeInside(c_point, SourcePoints[i])) return 0;
-                }
-                current++;
+            if (ShouldNotAdd(WindowPoints[num], SourcePoints[i], isInside))
+            {
+                shouldAdd = false; // Update the flag if necessary
+                break; // No need to check other sources
             }
         }
     }
-    return 1;
+
+    return shouldAdd;
 }
 
-void MainWindow::JudgeSpecial()
+// Helper function to determine if addition should be avoided
+bool MainWindow::ShouldNotAdd(const list<Point>& polygonA, const list<Point>& polygonB, bool isInside)
 {
-    for (int i = 0; i < SourcePoints.size(); i++)
+    for (const Point& point : polygonA)
     {
-        if (HasNoIntersection(SOURCE, i))
+        if ((isInside && !JudgeInside(point, polygonB)) ||
+            (!isInside && JudgeInside(point, polygonB)))
         {
-            if (JudgeAdd(SOURCE, i))
-            {
-                vector<Point> nova_list;
-                nova_list.clear();
-                Result.push_back(nova_list);
-                auto current = SourcePoints[i].begin();
-                while (current != SourcePoints[i].end())
-                {
-                    Point c_point = Point(current->x, current->y);
-                    Result[Result.size() - 1].push_back(c_point);
-                    current++;
-                }
-            }
+            return true; // Avoid addition if the condition is met
         }
     }
 
-    for (int i = 0; i < WindowPoints.size(); i++)
+    return false; // Allow addition by default
+}
+
+
+//void MainWindow::JudgeSpecial()
+//{
+//    for (int i = 0; i < SourcePoints.size(); i++)
+//    {
+//        if (HasNoIntersection(SOURCE, i))
+//        {
+//            if (JudgeAdd(SOURCE, i))
+//            {
+//                vector<Point> nova_list;
+//                nova_list.clear();
+//                Result.push_back(nova_list);
+//                auto current = SourcePoints[i].begin();
+//                while (current != SourcePoints[i].end())
+//                {
+//                    Point c_point = Point(current->x, current->y);
+//                    Result[Result.size() - 1].push_back(c_point);
+//                    current++;
+//                }
+//            }
+//        }
+//    }
+
+//    for (int i = 0; i < WindowPoints.size(); i++)
+//    {
+//        if (HasNoIntersection(WINDOW, i))
+//        {
+//            if (JudgeAdd(WINDOW, i))
+//            {
+//                vector<Point> nova_list;
+//                nova_list.clear();
+//                Result.push_back(nova_list);
+//                auto current = WindowPoints[i].begin();
+//                while (current != WindowPoints[i].end())
+//                {
+//                    Point c_point = Point(current->x, current->y);
+//                    Result[Result.size() - 1].push_back(c_point);
+//                    current++;
+//                }
+//            }
+//        }
+//    }
+//}
+void MainWindow::JudgeSpecial()
+{
+    // Process source polygons
+    for (int i = 0; i < SourcePoints.size(); i++)
     {
-        if (HasNoIntersection(WINDOW, i))
+        if (HasNoIntersection(SOURCE, i) && JudgeAdd(SOURCE, i))
         {
-            if (JudgeAdd(WINDOW, i))
-            {
-                vector<Point> nova_list;
-                nova_list.clear();
-                Result.push_back(nova_list);
-                auto current = WindowPoints[i].begin();
-                while (current != WindowPoints[i].end())
-                {
-                    Point c_point = Point(current->x, current->y);
-                    Result[Result.size() - 1].push_back(c_point);
-                    current++;
-                }
-            }
+            AddPolygonToResult(SourcePoints[i]);
         }
     }
+
+    // Process window polygons
+    for (int i = 0; i < WindowPoints.size(); i++)
+    {
+        if (HasNoIntersection(WINDOW, i) && JudgeAdd(WINDOW, i))
+        {
+            AddPolygonToResult(WindowPoints[i]);
+        }
+    }
+}
+
+// Helper function to add a polygon to the result
+void MainWindow::AddPolygonToResult(const list<Point>& polygon)
+{
+    vector<Point> novaList;
+
+    for (const Point& point : polygon)
+    {
+        novaList.push_back(point);
+    }
+
+    Result.push_back(novaList);
 }

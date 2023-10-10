@@ -53,6 +53,20 @@
      <string>裁切</string>
     </property>
    </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>170</x>
+      <y>20</y>
+      <width>561</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>通过在窗口内单击鼠标左键来输入多边形顶点，单击鼠标右键时闭合多边形。
+ 主多边形和裁剪多边形均可以是任意多边形（凹、凸、带一个或多个内环），不考虑多边形有自交的情况。</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
